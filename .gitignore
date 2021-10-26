@@ -9,3 +9,4 @@ src/tests/images
 *.npz
 
 .vscode
+zero_shot_mt.egg-info/

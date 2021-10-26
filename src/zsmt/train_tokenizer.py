@@ -3,8 +3,9 @@ import os
 from optparse import OptionParser
 from typing import Optional
 
-from textprocessor import TextProcessor
-from lang_info import get_langs_d
+from zsmt.lang_info import get_langs_d
+from zsmt.textprocessor import TextProcessor
+
 
 def get_tokenizer(train_path: Optional[str] = None,
                   model_path: Optional[str] = None, vocab_size: Optional[int] = None,

@@ -8,8 +8,8 @@ import torch.nn.functional as F
 from transformers import XLMRobertaTokenizer, XLMRobertaModel
 from transformers.configuration_utils import PretrainedConfig
 
-from bert_seq2seq import BertDecoderModel, BertEncoderModel, BertOutputLayer, BertConfig
-from textprocessor import TextProcessor
+from zsmt.bert_seq2seq import BertDecoderModel, BertEncoderModel, BertOutputLayer, BertConfig
+from zsmt.textprocessor import TextProcessor
 
 
 def decoder_config(vocab_size: int, pad_token_id: int, bos_token_id: int, eos_token_id: int, layer: int = 6,

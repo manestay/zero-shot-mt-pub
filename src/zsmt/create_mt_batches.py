@@ -7,8 +7,15 @@ from tqdm import tqdm
 
 from transformers import XLMRobertaTokenizer
 
-from textprocessor import TextProcessor
-from utils import get_token_id
+from zsmt.utils import get_token_id
+from zsmt.textprocessor import TextProcessor
+
+def filter_on_len(example_length, min_seq_len, max_seq_len):
+    valid_ids = []
+    for k, v in example_length.items():
+        if min_seq_len < v < max_seq_len:
+            valid_ids.append(k)
+    return set(valid_ids)
 
 def write(tp: TextProcessor, output_file: str, src_txt_file: str, srct_txt_file: str = None,
           dst_txt_file: str = None, shallow: bool = False, lang_lines_path: Optional[str] = None):
@@ -42,10 +49,10 @@ def write(tp: TextProcessor, output_file: str, src_txt_file: str, srct_txt_file:
         bos_id = tp.bos_token_id()
         src_bos_ids = [bos_id] * len(src_lines)
 
-    print(datetime.datetime.now(), "Reading source-translitered lines!")
     if srct_txt_file is None:
         srct_lines = src_lines
     else:
+        print(datetime.datetime.now(), "Reading source-transliterated lines!")
         with open(srct_txt_file, "r") as st_fp:
             srct_lines = list(map(lambda x: x.strip(), st_fp))
 

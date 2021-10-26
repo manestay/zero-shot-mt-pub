@@ -4,7 +4,7 @@ import sys
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from lang_info import get_langs_d
+from zsmt.lang_info import get_langs_d
 
 input_dir = os.path.abspath(sys.argv[1])
 output_file = os.path.abspath(sys.argv[2])

@@ -6,11 +6,11 @@ import torch.utils.data as data_utils
 from torch.cuda.amp import autocast
 from transformers import XLMRobertaTokenizer
 
-import dataset
-from seq2seq import Seq2Seq
-from seq_gen import BeamDecoder, get_outputs_until_eos
+from zsmt import dataset
+from zsmt.seq2seq import Seq2Seq
+from zsmt.seq_gen import BeamDecoder, get_outputs_until_eos
 
-from utils import get_token_id
+from zsmt.utils import get_token_id
 
 
 def get_lm_option_parser():
@@ -112,7 +112,7 @@ def build_data_loader(options, text_processor):
                 examples.append((src_tok_line, fixed_output, src_tok_line))
                 if i % 10000 == 0:
                     print(i, end="\r")
-    print("\n", datetime.datetime.now(), "Loaded %f examples", (len(examples)))
+    print("\n", datetime.datetime.now(), f"Loaded {len(examples)} examples")
     test_data = dataset.MTDataset(examples=examples, max_batch_capacity=options.total_capacity, max_batch=options.batch,
                                   dst_pad_idx=text_processor.pad_token_id(),
                                   src_pad_idx=text_processor.pad_token_id() if options.shallow else input_tokenizer.pad_token_id,
@@ -133,14 +133,12 @@ def build_model(options):
     return generator, model.text_processor
 
 
-if __name__ == "__main__":
-    parser = get_lm_option_parser()
-    (options, args) = parser.parse_args()
-    print('building model...')
+def translate(options):
     generator, text_processor = build_model(options)
     print('building dataloader...')
     test_loader = build_data_loader(options, text_processor)
     sen_count = 0
+    predictions = []
     with open(options.output_path, "w") as writer:
         with torch.no_grad():
             for batch in test_loader:
@@ -148,6 +146,7 @@ if __name__ == "__main__":
                     mt_output, src_text = translate_batch(batch, generator, text_processor, options.verbose)
                     sen_count += len(mt_output)
                     print(datetime.datetime.now(), "Translated", sen_count, "sentences", end="\r")
+                    predictions.extend(mt_output)
                     if not options.verbose:
                         writer.write("\n".join(mt_output))
                     else:
@@ -158,3 +157,9 @@ if __name__ == "__main__":
 
     print(datetime.datetime.now(), "Translated", sen_count, "sentences")
     print(datetime.datetime.now(), "Done!")
+    return predictions
+
+if __name__ == "__main__":
+    parser = get_lm_option_parser()
+    (options, args) = parser.parse_args()
+    translate(options)

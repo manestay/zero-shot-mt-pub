@@ -40,7 +40,7 @@ class MTDataset(Dataset):
 
     def build_batches_from_examples(self, dst_pad_idx, examples, max_batch, max_batch_capacity, max_seq_len,
                                     src_pad_idx):
-        print("BUILDING MT BATCHES")
+        print(f"BUILDING MT BATCHES FROM {len(examples)} examples")
         self.batches = []
         cur_src_batch, cur_srct_batch, cur_dst_batch = [], [], []
         cur_max_src_len, cur_max_srct_len, cur_max_dst_len = 0, 0, 0

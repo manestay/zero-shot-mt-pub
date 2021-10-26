@@ -54,4 +54,5 @@ def get_mt_options_parser():
                       help="Using multi-stream model (the batches should be built via multi-stream)", default=False)
     parser.add_option("--load-separate-train", action="store_true", dest="load_separate_train", default=False)
     parser.add_option("--eval-steps", dest="eval_steps", help='number of steps before running evaluation', type="int", default=5000)
+    parser.add_option("--early-stop", dest="early-stop", help="Num of epochs before early stop", type="int", default=0)
     return parser

@@ -13,13 +13,13 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data.distributed import DistributedSampler
 
-import dataset
-from loss import SmoothedNLLLoss
-from option_parser import get_mt_options_parser
-from seq2seq import Seq2Seq
-from seq_gen import BeamDecoder, get_outputs_until_eos
-from textprocessor import TextProcessor
-from utils import *
+from zsmt import dataset
+from zsmt.loss import SmoothedNLLLoss
+from zsmt.option_parser import get_mt_options_parser
+from zsmt.seq2seq import Seq2Seq
+from zsmt.seq_gen import BeamDecoder, get_outputs_until_eos
+from zsmt.textprocessor import TextProcessor
+from zsmt.utils import *
 
 sys.excepthook = ultratb.FormattedTB(mode='Verbose', color_scheme='Linux', call_pdb=False)
 
@@ -27,7 +27,7 @@ sys.excepthook = ultratb.FormattedTB(mode='Verbose', color_scheme='Linux', call_
 class Trainer:
     def __init__(self, model, mask_prob: float = 0.3, clip: int = 1, optimizer=None,
                  beam_width: int = 5, max_len_a: float = 1.1, max_len_b: int = 5, len_penalty_ratio: float = 0.8,
-                 nll_loss: bool = False, rank: int = -1):
+                 nll_loss: bool = False, rank: int = -1, save_latest=True):
         self.model = model
 
         self.clip = clip
@@ -61,6 +61,7 @@ class Trainer:
 
         self.reference = None
         self.best_bleu = -1.0
+        self.save_latest = save_latest
 
     def train_epoch(self, step: int, saving_path: str = None, mt_dev_iter: List[data_utils.DataLoader] = None,
                     mt_train_iter: List[data_utils.DataLoader] = None, max_step: int = 300000, accum=1,
@@ -71,6 +72,7 @@ class Trainer:
         total_tokens, total_loss, tokens, cur_loss = 0, 0, 0, 0
         cur_loss = 0
         batch_zip, shortest = self.get_batch_zip(mt_train_iter)
+        bleu = 0
 
         model = (
             self.model.module if hasattr(self.model, "module") else self.model
@@ -129,17 +131,8 @@ class Trainer:
                             bleu = self.eval_bleu(mt_dev_iter, saving_path)
                             print("BLEU:", bleu)
 
-                        if step % 10000 == 0:
-                            if self.rank <= 0:
-                                if self.rank < 0:
-                                    model.cpu().save(saving_path + ".latest")
-                                elif self.rank == 0:
-                                    model.save(saving_path + ".latest")
-                                if save_opt:
-                                    with open(os.path.join(saving_path + ".latest", "optim"), "wb") as fp:
-                                        pickle.dump(self.optimizer, fp)
-                                if self.rank < 0:
-                                    model = model.to(self.device)
+                        if self.save_latest and step % 25000 == 0:
+                            self.handle_save(model, saving_path + ".latest", save_opt)
 
                         start, tokens, cur_loss = time.time(), 0, 0
 
@@ -155,19 +148,19 @@ class Trainer:
         try:
             if True:  # self.rank <= 0:
                 print("Total loss in this epoch: %f" % (total_loss / total_tokens))
-                if self.rank < 0:
-                    model.cpu().save(saving_path + ".latest")
-                    model = model.to(self.device)
-                elif self.rank == 0:
-                    model.save(saving_path + ".latest")
+                if self.save_latest:
+                    self.handle_save(model, saving_path + ".latest", save_opt)
 
                 if mt_dev_iter is not None:
                     bleu = self.eval_bleu(mt_dev_iter, saving_path)
                     print("BLEU:", bleu)
+                elif (mt_dev_iter is None and step == max_step): # save best BLEU at end
+                    self.handle_save(model, saving_path, save_opt)
+
         except RuntimeError as err:
             print(repr(err))
 
-        return step
+        return step, bleu
 
     def get_batch_zip(self, mt_train_iter):
         iters = list(chain(*filter(lambda x: x != None, [mt_train_iter])))
@@ -220,21 +213,12 @@ class Trainer:
 
             if bleu.score > self.best_bleu:
                 self.best_bleu = bleu.score
-                print("Saving best BLEU", self.best_bleu)
                 with open(os.path.join(saving_path, "bleu.best.output"), "w") as writer:
                     writer.write("\n".join(
                         [src + "\n" + ref + "\n" + o + "\n\n***************\n" for src, ref, o in
                          zip(src_text, mt_output, self.reference[:len(mt_output)])]))
-                if self.rank < 0:
-                    model.cpu().save(saving_path)
-                    model = model.to(self.device)
-                elif self.rank == 0:
-                    model.save(saving_path)
-
-                if save_opt:
-                    with open(os.path.join(saving_path, "optim"), "wb") as fp:
-                        pickle.dump(self.optimizer, fp)
-
+                print("Saving best BLEU", self.best_bleu)
+                self.handle_save(model, saving_path, save_opt)
         return bleu.score
 
     @staticmethod
@@ -248,13 +232,13 @@ class Trainer:
         num_processors = max(torch.cuda.device_count(), 1) if options.local_rank < 0 else 1
 
         if options.pretrained_path is not None:
+            print(f'loaded pretrained model from {options.pretrained_path}')
             mt_model = Seq2Seq.load(Seq2Seq, options.pretrained_path, tok_dir=options.tokenizer_path)
         else:
             mt_model = Seq2Seq(text_processor=text_processor, dec_layer=options.decoder_layer,
                                embed_dim=options.embed_dim, intermediate_dim=options.intermediate_layer_dim,
                                freeze_encoder=options.freeze_encoder, shallow_encoder=options.shallow_encoder,
                                multi_stream=options.multi_stream)
-
         print(options.local_rank, "Model initialization done!")
 
         if options.continue_train:
@@ -265,7 +249,7 @@ class Trainer:
 
         trainer = Trainer(model=mt_model, mask_prob=options.mask_prob, optimizer=optimizer, clip=options.clip,
                           beam_width=options.beam_width, max_len_a=options.max_len_a, max_len_b=options.max_len_b,
-                          len_penalty_ratio=options.len_penalty_ratio, rank=options.local_rank)
+                          len_penalty_ratio=options.len_penalty_ratio, rank=options.local_rank, save_latest=False)
 
         pin_memory = torch.cuda.is_available()
 
@@ -278,12 +262,21 @@ class Trainer:
             mt_dev_loader = Trainer.get_mt_dev_data(mt_model, options, pin_memory, text_processor, trainer)
 
         step, train_epoch = 0, 1
+        best_bleu = 0
+        not_improved = 0
         while options.step > 0 and step < options.step:
             print(trainer.rank, "--> train epoch", train_epoch)
-            step = trainer.train_epoch(mt_train_iter=mt_train_loader, max_step=options.step,
+            step, bleu = trainer.train_epoch(mt_train_iter=mt_train_loader, max_step=options.step,
                                        mt_dev_iter=mt_dev_loader, saving_path=options.model_path, step=step,
                                        save_opt=options.save_opt, accum=options.accum,
                                        eval_steps=options.eval_steps)
+            if bleu > best_bleu:
+                not_improved = 0
+                best_bleu = bleu
+            else:
+                not_improved += 1
+            if options.early_stop and not_improved >= options.early_stop:
+                break
             train_epoch += 1
 
     @staticmethod
