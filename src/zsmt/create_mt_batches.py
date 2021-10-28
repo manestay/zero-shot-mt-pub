@@ -18,7 +18,8 @@ def filter_on_len(example_length, min_seq_len, max_seq_len):
     return set(valid_ids)
 
 def write(tp: TextProcessor, output_file: str, src_txt_file: str, srct_txt_file: str = None,
-          dst_txt_file: str = None, shallow: bool = False, lang_lines_path: Optional[str] = None):
+          dst_txt_file: str = None, shallow: bool = False, lang_lines_path: Optional[str] = None,
+          min_seq_len=-1, max_seq_len=-1):
     """
     There are scenarios for which the input comes from two streams such as original text and transliterated text. Or we
     want to use two different encoders such as XLM and another one. In these cases, srct_txt_file serves as the second
@@ -74,6 +75,21 @@ def write(tp: TextProcessor, output_file: str, src_txt_file: str, srct_txt_file:
                 zip(src_bos_ids, tqdm(tp.tokenizer.encode_batch(srct_lines)))]
     print(datetime.datetime.now(), "Getting example lengths!")
     example_length = dict(map(lambda e: (e[0], len(e[1])), enumerate(src_ids)))
+
+    if max_seq_len != -1 or min_seq_len != -1:
+        print(datetime.datetime.now(), f'filtering to lengths ({min_seq_len}, {max_seq_len})')
+        assert list(example_length.keys()) == list(range(len(example_length)))
+        filtered_ids = filter_on_len(example_length, min_seq_len, max_seq_len)
+        src_ids = [x for i, x in enumerate(src_ids) if i in filtered_ids]
+        srct_ids = [x for i, x in enumerate(srct_ids) if i in filtered_ids]
+        dst_ids = [x for i, x in enumerate(dst_ids) if i in filtered_ids]
+        assert len(src_lines) == len(dst_lines) == len(srct_lines)
+        print(f'filtered to {len(src_ids)} (from {len(src_lines)})')
+
+        # example_length2 = {i: v for i, v in enumerate([le for j, le in example_length.items() if j in filtered_ids])}
+        example_length = dict(map(lambda e: (e[0], len(e[1])), enumerate(src_ids)))
+        # assert example_length2 == example_length
+
     print(datetime.datetime.now(), "Sorting example lengths!")
     sorted_lens = sorted(example_length.items(), key=lambda item: item[1])
     print(datetime.datetime.now(), "Getting sorted examples!")
@@ -111,4 +127,5 @@ if __name__ == "__main__":
 
     write(tp=tokenizer, output_file=options.output_path, src_txt_file=options.src_data_path,
           srct_txt_file=options.srct_data_path, dst_txt_file=options.dst_data_path,
-          shallow=options.shallow_encoder, lang_lines_path=options.lang_lines_path)
+          shallow=options.shallow_encoder, min_seq_len=options.min_seq_len, max_seq_len=options.max_seq_len,
+          lang_lines_path=options.lang_lines_path)

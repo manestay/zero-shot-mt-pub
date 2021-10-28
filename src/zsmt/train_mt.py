@@ -167,6 +167,17 @@ class Trainer:
         shortest = min(len(l) for l in iters)
         return zip(*iters), shortest
 
+    def handle_save(self, model, saving_path, save_opt=False):
+        if self.rank < 0:
+            model.cpu().save(saving_path)
+            model = model.to(self.device)
+        elif self.rank == 0:
+            model.save(saving_path)
+
+        if save_opt:
+            with open(os.path.join(saving_path, "optim"), "wb") as fp:
+                pickle.dump(self.optimizer, fp)
+
     def eval_bleu(self, dev_data_iter, saving_path, save_opt: bool = False):
         mt_output = []
         src_text = []
