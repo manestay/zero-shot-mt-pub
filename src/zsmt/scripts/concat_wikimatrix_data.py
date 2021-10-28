@@ -1,3 +1,6 @@
+'''
+Deprecated -- use the other wikimatrix scripts instead
+'''
 import os
 import sys
 
