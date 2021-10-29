@@ -1,6 +1,5 @@
 # Zero-shot Machine Translation
-
-
+NOTE: This public repository is not currently being updated -- please see https://github.com/manestay/zero-shot-mt, which is a private repository (ping bryanli@seas.upenn.edu for access).
 # Contents
 - [Installing Dependencies](#installing-dependencies)
   * [Installation using virtualenv](#installation-using-virtualenv)
